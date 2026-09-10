@@ -901,8 +901,12 @@ def run_browser_attendance(video_placeholder, log_placeholder, class_context=Non
 
         return av.VideoFrame.from_ndarray(frame, format="bgr24")
 
-    with video_placeholder.container():
-        context = browser_camera_component("smartattend-browser-attendance", process_browser_frame)
+    # Third-party components calculate their iframe height from their direct
+    # Streamlit block. Nesting WebRTC inside st.empty() can collapse the iframe
+    # to an unclickable strip after a rerun, so clear the legacy image slot and
+    # render the browser camera as a normal component block.
+    video_placeholder.empty()
+    context = browser_camera_component("smartattend-browser-attendance", process_browser_frame)
     if context is not None:
         if context.state.playing:
             log_placeholder.info("Browser camera connected. Keep this page open during attendance.")
