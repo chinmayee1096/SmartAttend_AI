@@ -33,13 +33,13 @@ SUBJECTS = {
 FACULTY = {
     "MKN": "Prof. Manjunath K N (MKN)",
     "PN": "Prof. Poornima N (PN)",
-    "DR-SR": "Sunitha R",
+    "DR-SR": "Dr. Sunitha R (Dr. SR)",
     "PHC": "Prof. Pavithra H C (PHC)",
     "KP": "Prof. Krithi P (KP)",
     "MBM": "Prof. Mahesh B M (MBM)",
     "AML-LAB-A": "PHC / PKD / PV (Advanced ML Lab A)",
     "ARVR-LAB-A": "KP / MBM / MKN (ARVR Lab A)",
-    "CNS-LAB-A": "Sunitha R / Dr. HK / Dr. MU (CNS Lab A)",
+    "CNS-LAB-A": "Dr. SR / Dr. HK / Dr. MU (CNS Lab A)",
     "OPEN-ELECTIVE": "Open Elective Faculty (course-specific)",
     "ACTIVITY": "Club Activity Coordinator",
     "MENTOR": "Class Mentor",
@@ -49,8 +49,9 @@ FACULTY = {
 # This remains idempotent so existing local and deployed databases are repaired
 # without replacing timetable or attendance records.
 FACULTY_NAME_CORRECTIONS = {
-    "Dr. Sruthir K (Dr. SR)": "Sunitha R",
-    "Dr. SR / Dr. HK / Dr. MU (CNS Lab A)": "Sunitha R / Dr. HK / Dr. MU (CNS Lab A)",
+    "Dr. Sruthir K (Dr. SR)": "Dr. Sunitha R (Dr. SR)",
+    "Sunitha R": "Dr. Sunitha R (Dr. SR)",
+    "Sunitha R / Dr. HK / Dr. MU (CNS Lab A)": "Dr. SR / Dr. HK / Dr. MU (CNS Lab A)",
 }
 
 # weekday, start, end, course code, faculty key, room, period label
