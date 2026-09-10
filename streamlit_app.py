@@ -19,6 +19,7 @@ import shutil
 from face_pipeline import prepare_face, valid_sample, detect_faces
 from smart_attendance import ui_theme as ui
 from smart_attendance.database.migrations import import_legacy
+from smart_attendance.database.db import connect
 from smart_attendance.services.attendance_service import (
     finalize_due, record_observation, refresh_report, rules as attendance_rules, start_class, sync_csv,
 )
@@ -1201,6 +1202,15 @@ def main():
     # Safe, idempotent startup work: preserve legacy CSVs while keeping SQLite
     # current and finalize any configured classes that ended while the app was open or closed.
     import_legacy(BASE_DIR)
+    # A fresh cloud deployment has no private runtime database. Seed the
+    # approved institutional AIML Semester V schedule once so timetable and
+    # current-class resolution work immediately, while preserving any
+    # timetable already configured locally or by an administrator.
+    with connect() as db:
+        timetable_count = db.execute("SELECT COUNT(*) FROM timetables").fetchone()[0]
+    if timetable_count == 0:
+        from scripts.import_aiml_sem5_timetable import import_timetable
+        import_timetable()
     finalize_due(datetime.now(), BASE_DIR)
 
     # Check for missing optional libraries
