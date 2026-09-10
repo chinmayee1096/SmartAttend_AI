@@ -234,10 +234,22 @@ def browser_face_enrollment(faces_dir, capture_dir, roll, name, dept, section):
                         shutil.copytree(faces_dir, backup)
                         shutil.rmtree(faces_dir)
                     capture_dir.replace(faces_dir)
-                    (faces_dir / ".enrollment_complete").write_text(name, encoding="utf-8")
+                    from train_faces import train_all
+                    training_report = train_all(BASE_DIR)
+                    profile = next(
+                        (row for row in training_report
+                         if str(row.get("roll")) == str(roll)
+                         and str(row.get("section", "")).replace("\\", "/") == f"{dept}/{section}"),
+                        None,
+                    )
+                    training_status = str((profile or {}).get("status", "Training did not produce a profile"))
+                    (faces_dir / ".enrollment_complete").write_text(training_status, encoding="utf-8")
                     record_system(
                         "FACE ENROLLED", f"{dept}:{section}:{roll}",
-                        {"department": dept, "section": section, "roll": roll, "sample_count": state["count"]},
+                        {
+                            "department": dept, "section": section, "roll": roll,
+                            "sample_count": state["count"], "training_status": training_status,
+                        },
                     )
                     state["complete"] = True
 
@@ -354,9 +366,14 @@ def page_training():
         faces_root.mkdir(parents=True, exist_ok=True)
         completion_marker = faces_dir / ".enrollment_complete"
         if browser_camera_enabled() and completion_marker.exists():
+            training_status = completion_marker.read_text(encoding="utf-8")
             completion_marker.unlink()
             st.session_state.training_active = False
-            st.success(f"Capture completed for {name} ({roll}). Now click Train all models.")
+            load_resources.clear()
+            if training_status.startswith("Trained"):
+                st.success(f"Capture and model training completed for {name} ({roll}).")
+            else:
+                st.error(f"Capture completed, but validation failed: {training_status}. Please re-enroll with clearer angles and even lighting.")
             return
         if capture_dir.exists():
             shutil.rmtree(capture_dir)
@@ -548,9 +565,26 @@ def page_attendance():
     if "attendance_active" not in st.session_state:
         st.session_state.attendance_active = False
 
+    if selected_context is not None:
+        expected_model = BASE_DIR / selected_context.department / selected_context.section / "trainer.yml"
+        recognition_ready = expected_model.exists()
+        if not recognition_ready:
+            st.warning(
+                f"Attendance is waiting for a trained face model for "
+                f"{selected_context.department}-{selected_context.section}. Open Students & training, "
+                "complete face capture, and wait for model validation to finish."
+            )
+    else:
+        recognition_ready = any(BASE_DIR.glob("*/*/trainer.yml"))
+
     col1, col2, col3 = st.columns(3)
     with col1:
-        start_btn = st.button("Start recognition", disabled=st.session_state.attendance_active, type="primary", width="stretch")
+        start_btn = st.button(
+            "Start recognition",
+            disabled=st.session_state.attendance_active or not recognition_ready,
+            type="primary",
+            width="stretch",
+        )
     with col2:
         stop_btn  = st.button("Stop recognition",  disabled=not st.session_state.attendance_active, width="stretch")
     with col3:
