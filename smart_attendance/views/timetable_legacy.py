@@ -6,6 +6,7 @@ import streamlit as st
 
 from smart_attendance.services import timetable_runtime as service
 from smart_attendance.database.db import connect
+from smart_attendance.utils.time_utils import system_now, system_today
 
 
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -23,7 +24,7 @@ def _clock(value):
 
 
 def _weekly_grid(rows, schedule_label, now=None):
-    now = now or datetime.now()
+    now = now or system_now()
     headers = "".join(f"<th>{start}<br>{end}</th>" for start, end, _ in TIME_SLOTS)
     body = []
     active_label = None
@@ -181,8 +182,8 @@ def show():
                 end_at = st.time_input("End time", time(10, 0))
                 period = st.text_input("Period label", "Period1")
             classroom = st.text_input("Classroom")
-            valid_from = st.date_input("Effective from", date.today())
-            valid_to = st.date_input("Effective until", date(date.today().year + 1, 12, 31))
+            valid_from = st.date_input("Effective from", system_today())
+            valid_to = st.date_input("Effective until", date(system_today().year + 1, 12, 31))
             if st.form_submit_button("Save timetable entry", type="primary", width="stretch"):
                 try:
                     service.add_entry(

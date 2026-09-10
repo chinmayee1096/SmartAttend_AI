@@ -29,6 +29,7 @@ from smart_attendance.services.liveness_service import (
 )
 from smart_attendance.services.timetable_runtime import current_classes, fallback_context, student_semesters
 from smart_attendance.services.audit_service import record_system
+from smart_attendance.utils.time_utils import system_now
 
 # Try importing optional libraries
 try:
@@ -98,7 +99,7 @@ def get_schedule():
     ]
 
 def get_current_period():
-    now = datetime.now().time()
+    now = system_now().time()
     for name, start, end in get_schedule():
         if start <= now < end:
             return name, start, end
@@ -111,8 +112,8 @@ def get_attendance_status(sign_in_time_str, period_start):
     """
     try:
         sign_in_time = datetime.strptime(sign_in_time_str, "%Y-%m-%d %H:%M:%S").time()
-        period_start_dt = datetime.combine(datetime.today(), period_start)
-        sign_in_dt = datetime.combine(datetime.today(), sign_in_time)
+        period_start_dt = datetime.combine(system_now().date(), period_start)
+        sign_in_dt = datetime.combine(system_now().date(), sign_in_time)
         diff_minutes = (sign_in_dt - period_start_dt).total_seconds() / 60
         if diff_minutes > 10:
             return "Late"
@@ -227,7 +228,7 @@ def browser_face_enrollment(faces_dir, capture_dir, roll, name, dept, section):
                 if state["count"] >= required_samples:
                     if faces_dir.exists():
                         backup = (
-                            BASE_DIR.parent / "face_backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
+                            BASE_DIR.parent / "face_backups" / system_now().strftime("%Y%m%d_%H%M%S")
                             / dept / section / roll
                         )
                         backup.parent.mkdir(parents=True, exist_ok=True)
@@ -467,7 +468,7 @@ def page_training():
                     cap.release()
                     if faces_dir.exists():
                         backup = (
-                            BASE_DIR.parent / "face_backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
+                            BASE_DIR.parent / "face_backups" / system_now().strftime("%Y%m%d_%H%M%S")
                             / dept / section / roll
                         )
                         backup.parent.mkdir(parents=True, exist_ok=True)
@@ -639,7 +640,7 @@ def page_attendance():
     st.subheader("Attendance reports")
 
     r_dept = st.selectbox("Select Department", DEPARTMENTS, key="rep_dept")
-    date_str = st.date_input("Select Date", datetime.now()).strftime("%Y-%m-%d")
+    date_str = st.date_input("Select Date", system_now()).strftime("%Y-%m-%d")
 
     report_path = refresh_report(datetime.strptime(date_str, "%Y-%m-%d").date(), r_dept, BASE_DIR)
 
@@ -948,8 +949,8 @@ def run_attendance_loop(video_placeholder, log_placeholder, class_context=None):
 
     try:
         while st.session_state.attendance_active:
-            if class_context and datetime.now() >= class_context.ends_at:
-                finalize_due(datetime.now(), BASE_DIR)
+            if class_context and system_now() >= class_context.ends_at:
+                finalize_due(system_now(), BASE_DIR)
                 st.session_state.attendance_active = False
                 log_placeholder.success(
                     f"{class_context.period} ended. Attendance was finalized and the report was updated."
@@ -1047,7 +1048,7 @@ def run_attendance_loop(video_placeholder, log_placeholder, class_context=None):
 
 
 def mark_attendance(info, period, period_start):
-    date_str    = datetime.now().strftime("%Y-%m-%d")
+    date_str    = system_now().strftime("%Y-%m-%d")
     reports_dir = BASE_DIR / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1065,7 +1066,7 @@ def mark_attendance(info, period, period_start):
     )
 
     if not mask.any():
-        now        = datetime.now()
+        now        = system_now()
         sign_in_str = now.strftime("%Y-%m-%d %H:%M:%S")
         status     = get_attendance_status(sign_in_str, period_start)
 
@@ -1270,7 +1271,7 @@ def page_email_alerts():
     col1, col2 = st.columns(2)
     with col1:
         alert_dept = st.selectbox("Department", DEPARTMENTS, key="alert_dept")
-        alert_date = st.date_input("Date", datetime.now()).strftime("%Y-%m-%d")
+        alert_date = st.date_input("Date", system_now()).strftime("%Y-%m-%d")
     with col2:
         alert_report = refresh_report(datetime.strptime(alert_date, "%Y-%m-%d").date(), alert_dept, BASE_DIR)
         if alert_report and alert_report.exists():
@@ -1287,7 +1288,7 @@ def page_email_alerts():
     st.subheader("Daily faculty summary")
     teacher_email = st.text_input("Teacher Email")
     summary_dept  = st.selectbox("Department for Summary", DEPARTMENTS, key="sum_dept")
-    summary_date  = st.date_input("Summary Date", datetime.now(), key="sum_date").strftime("%Y-%m-%d")
+    summary_date  = st.date_input("Summary Date", system_now(), key="sum_date").strftime("%Y-%m-%d")
 
     if st.button("Send summary email"):
         send_summary_email(teacher_email, summary_dept, summary_date)
@@ -1479,7 +1480,7 @@ def main():
     if timetable_count == 0:
         from scripts.import_aiml_sem5_timetable import import_timetable
         import_timetable()
-    finalize_due(datetime.now(), BASE_DIR)
+    finalize_due(system_now(), BASE_DIR)
 
     # Check for missing optional libraries
     missing = []

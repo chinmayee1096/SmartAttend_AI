@@ -7,6 +7,7 @@ import streamlit as st
 from smart_attendance import ui_theme as ui
 from smart_attendance.services import audit_service
 from smart_attendance.utils.security import AccessDenied
+from smart_attendance.utils.time_utils import system_today
 
 
 def show(token):
@@ -21,7 +22,7 @@ def show(token):
         user = col1.selectbox("Audit user", ["All", *options["users"]])
         action = col2.selectbox("Audit action", ["All", *options["actions"]])
         use_date = col3.checkbox("Filter by date")
-        selected_date = st.date_input("Audit date", date.today(), disabled=not use_date)
+        selected_date = st.date_input("Audit date", system_today(), disabled=not use_date)
         rows = audit_service.query(
             token, "" if user == "All" else user, "" if action == "All" else action,
             selected_date if use_date else None,

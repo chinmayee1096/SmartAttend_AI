@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import date,time
 from smart_attendance.services import admin_service as admin,timetable_service as timetable
+from smart_attendance.utils.time_utils import system_today
 
 
 def show(token):
@@ -23,7 +24,7 @@ def show(token):
         weekday=st.selectbox('Day',range(7),format_func=lambda n:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][n])
         start=st.time_input('Start time',time(9)); end=st.time_input('End time',time(10))
         classroom=st.text_input('Classroom'); period=st.text_input('Period',value='Period1')
-        since=st.date_input('Effective from',date.today()); until=st.date_input('Effective until',date(date.today().year,12,31))
+        since=st.date_input('Effective from',system_today()); until=st.date_input('Effective until',date(system_today().year,12,31))
         if st.form_submit_button('Save class'):
             timetable.save_timetable(token,d['id'],sec['id'],semester,subject['id'],faculty['id'],weekday,start.isoformat(),end.isoformat(),classroom,period,since.isoformat(),until.isoformat())
             st.success('Class saved.'); st.rerun()

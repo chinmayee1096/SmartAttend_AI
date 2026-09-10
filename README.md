@@ -236,6 +236,13 @@ $env:SMARTATTEND_DB = "D:\AttendanceData\smartattend.sqlite3"
 .\run_app.bat
 ```
 
+The institutional clock defaults to `Asia/Kolkata`. Override it only when the
+college operates in another timezone:
+
+```powershell
+$env:SMARTATTEND_TIMEZONE = "Asia/Kolkata"
+```
+
 ## 🔐 Initial setup and roles
 
 Open **Staff Access** on a fresh database and create the first administrator. No default username or password is shipped. Passwords must contain 12–256 characters and are stored as salted PBKDF2 hashes.

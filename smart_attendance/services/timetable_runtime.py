@@ -6,6 +6,7 @@ from datetime import date, datetime, time
 
 from smart_attendance.database.db import connect, initialize
 from smart_attendance.services.audit_service import record_system
+from smart_attendance.utils.time_utils import system_now
 
 
 @dataclass(frozen=True)
@@ -130,7 +131,7 @@ def deactivate(entry_id: int) -> None:
 
 
 def current_classes(now: datetime | None = None) -> list[ClassContext]:
-    now = now or datetime.now()
+    now = now or system_now()
     day, current = now.date().isoformat(), now.time().strftime("%H:%M:%S")
     with connect() as db:
         rows = db.execute(
@@ -176,7 +177,7 @@ def fallback_context(
     now: datetime | None = None,
     semester: int = 1,
 ) -> ClassContext | None:
-    now = now or datetime.now()
+    now = now or system_now()
     for period, start_at, end_at in schedule:
         if "Break" not in period and start_at <= now.time() < end_at:
             return ClassContext(

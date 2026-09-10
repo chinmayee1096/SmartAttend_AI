@@ -1,6 +1,7 @@
 from datetime import datetime,date,timedelta,time
 from smart_attendance.database.db import connect
 from smart_attendance.utils.security import actor,audit
+from smart_attendance.utils.time_utils import system_now
 
 
 def list_timetable(token):
@@ -54,6 +55,6 @@ def materialize(db,day):
 
 
 def current_classes(token,now=None):
-    now=now or datetime.now()
+    now=now or system_now()
     tables=list_timetable(token)
     return [t for t in tables if t['weekday']==now.weekday() and t['valid_from']<=now.date().isoformat()<=t['valid_to'] and t['start_time']<=now.time().isoformat()<t['end_time']]

@@ -9,6 +9,7 @@ from pathlib import Path
 from smart_attendance.database.db import ROOT, connect, initialize
 from smart_attendance.services.timetable_runtime import ClassContext
 from smart_attendance.services.audit_service import record_system
+from smart_attendance.utils.time_utils import system_now
 
 
 DEFAULT_RULES = {
@@ -99,7 +100,7 @@ def record_observation(
     base_dir: Path | None = None,
 ) -> str:
     """Record one verified observation without ever creating a duplicate row."""
-    observed_at = observed_at or datetime.now()
+    observed_at = observed_at or system_now()
     config = rules()
     if observed_at < context.starts_at:
         return "NOT STARTED"
@@ -161,7 +162,7 @@ def record_observation(
 
 def finalize_due(now: datetime | None = None, base_dir: Path | None = None) -> int:
     """Finalize every ended, known class. Missing roster members become ABSENT."""
-    now = now or datetime.now()
+    now = now or system_now()
     # Create rosters only for classes that can still be observed.  Importing a
     # timetable after a class has ended must not manufacture retroactive
     # absences for a period during which SmartAttend was not configured.
@@ -201,7 +202,7 @@ def complete_period_rosters(now: datetime | None = None, base_dir: Path | None =
     an eligible student without an event is an ABSENT student-period, not a
     missing denominator.
     """
-    now = now or datetime.now()
+    now = now or system_now()
     initialize()
     inserted = 0
     changed: set[tuple[date, str]] = set()

@@ -3,6 +3,7 @@ from datetime import datetime
 from html import escape
 from pathlib import Path
 import streamlit as st
+from smart_attendance.utils.time_utils import system_now
 
 
 def apply_theme():
@@ -34,7 +35,7 @@ def heading(eyebrow,title,description):
 
 def topbar():
     st.markdown(f'''<div class="sa-topbar"><span>WORKSPACE <span class="sa-divider">/</span> CAMPUS OPERATIONS</span>
-    <span class="sa-date">{datetime.now().strftime('%a, %d %b %Y')}</span></div>''',unsafe_allow_html=True)
+    <span class="sa-date">{system_now().strftime('%a, %d %b %Y · %H:%M IST')}</span></div>''',unsafe_allow_html=True)
 
 
 def overview(base):
