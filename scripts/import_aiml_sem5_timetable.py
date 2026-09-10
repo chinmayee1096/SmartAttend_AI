@@ -33,16 +33,24 @@ SUBJECTS = {
 FACULTY = {
     "MKN": "Prof. Manjunath K N (MKN)",
     "PN": "Prof. Poornima N (PN)",
-    "DR-SR": "Dr. Sruthir K (Dr. SR)",
+    "DR-SR": "Sunitha R",
     "PHC": "Prof. Pavithra H C (PHC)",
     "KP": "Prof. Krithi P (KP)",
     "MBM": "Prof. Mahesh B M (MBM)",
     "AML-LAB-A": "PHC / PKD / PV (Advanced ML Lab A)",
     "ARVR-LAB-A": "KP / MBM / MKN (ARVR Lab A)",
-    "CNS-LAB-A": "Dr. SR / Dr. HK / Dr. MU (CNS Lab A)",
+    "CNS-LAB-A": "Sunitha R / Dr. HK / Dr. MU (CNS Lab A)",
     "OPEN-ELECTIVE": "Open Elective Faculty (course-specific)",
     "ACTIVITY": "Club Activity Coordinator",
     "MENTOR": "Class Mentor",
+}
+
+# Corrections to names that appeared in an earlier timetable transcription.
+# This remains idempotent so existing local and deployed databases are repaired
+# without replacing timetable or attendance records.
+FACULTY_NAME_CORRECTIONS = {
+    "Dr. Sruthir K (Dr. SR)": "Sunitha R",
+    "Dr. SR / Dr. HK / Dr. MU (CNS Lab A)": "Sunitha R / Dr. HK / Dr. MU (CNS Lab A)",
 }
 
 # weekday, start, end, course code, faculty key, room, period label
@@ -91,6 +99,20 @@ SPECIAL_SATURDAYS = {
 }
 
 
+def correct_faculty_names() -> int:
+    """Apply verified faculty-name corrections to an existing database."""
+    initialize()
+    changed = 0
+    with connect() as db:
+        for old_name, corrected_name in FACULTY_NAME_CORRECTIONS.items():
+            cursor = db.execute(
+                "UPDATE faculty SET name=? WHERE name=?",
+                (corrected_name, old_name),
+            )
+            changed += cursor.rowcount
+    return changed
+
+
 def _catalogue_ids() -> tuple[int, int, dict[str, int], dict[str, int]]:
     with connect() as db:
         department_id = db.execute("SELECT id FROM departments WHERE name=?", ("AIML",)).fetchone()[0]
@@ -118,6 +140,7 @@ def _catalogue_ids() -> tuple[int, int, dict[str, int], dict[str, int]]:
 
 def import_timetable() -> tuple[int, int]:
     initialize()
+    correct_faculty_names()
     department_id, section_id, subjects, faculty = _catalogue_ids()
     added = skipped = 0
     entries_to_import = [

@@ -1475,6 +1475,8 @@ def main():
     # approved institutional AIML Semester V schedule once so timetable and
     # current-class resolution work immediately, while preserving any
     # timetable already configured locally or by an administrator.
+    from scripts.import_aiml_sem5_timetable import correct_faculty_names
+    correct_faculty_names()
     with connect() as db:
         timetable_count = db.execute("SELECT COUNT(*) FROM timetables").fetchone()[0]
     if timetable_count == 0:
