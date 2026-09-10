@@ -57,6 +57,7 @@ Manual roll calls consume teaching time, create transcription errors, and make i
 
 ### 🎥 Camera and recognition
 
+- Browser-owned WebRTC camera streaming for HTTPS deployments, with explicit browser permission controls.
 - Automatic probing of camera indexes `0–5` with Windows-compatible OpenCV backends.
 - Camera test, selection, safe acquisition, release, stale-lock recovery, and Streamlit rerun protection.
 - Haar-cascade face detection and LBPH recognition using `opencv-contrib-python`.
@@ -349,7 +350,8 @@ Never use `git add -f` for `data`, `dataset`, `models`, `exports`, `.env`, Strea
 |---|---|
 | `python` is not recognized | Install Python 3.12 with the Python Launcher, then use `py -3.12` or the `.venv\Scripts\python.exe` path. |
 | `cv2.face` is unavailable | Remove conflicting OpenCV packages and reinstall the pinned `opencv-contrib-python==4.11.0.86`. |
-| Camera cannot open | Stop other camera apps, select another index in the sidebar, run Camera Test, and allow desktop camera access in Windows Privacy settings. |
+| Camera cannot open locally | Select **Local OpenCV camera**, stop other camera apps, try another index, and allow desktop camera access in Windows Privacy settings. |
+| Deployed site cannot access camera | Select **Browser camera**, click Test camera or start capture, click the WebRTC **START** control, and choose **Allow** in the browser permission prompt. |
 | DirectShow/MSMF warnings | Stop capture, wait for resource release, retry another camera index/backend, and update the webcam driver. The camera service falls back across supported backends. |
 | Camera remains locked after a crash | Close stale Python/Streamlit processes and restart `run_app.bat`; the service also detects stale local lock files. |
 | Correct face is shown as unknown | Capture clearer varied samples, verify the correct department/section, retrain, and review the configured confidence threshold. |

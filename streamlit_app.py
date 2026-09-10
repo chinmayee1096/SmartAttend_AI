@@ -16,6 +16,7 @@ from email.mime.base import MIMEBase
 from email import encoders
 import io
 import shutil
+import threading
 from face_pipeline import prepare_face, valid_sample, detect_faces
 from smart_attendance import ui_theme as ui
 from smart_attendance.database.migrations import import_legacy
@@ -147,6 +148,116 @@ def open_camera():
     return Lease()
 
 
+def browser_camera_enabled():
+    return st.session_state.get("camera_source", "Browser camera") == "Browser camera"
+
+
+def browser_camera_component(key, callback):
+    """Render a browser-owned camera stream for hosted deployments."""
+    try:
+        from streamlit_webrtc import WebRtcMode, webrtc_streamer
+    except ImportError:
+        st.error("Browser camera support is not installed. Install the current requirements and restart the app.")
+        return None
+    return webrtc_streamer(
+        key=key,
+        mode=WebRtcMode.SENDRECV,
+        video_frame_callback=callback,
+        media_stream_constraints={"video": True, "audio": False},
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        async_processing=True,
+        media_toggle_controls=False,
+    )
+
+
+def browser_camera_test():
+    detector = get_face_detector()
+
+    def annotate(video_frame):
+        import av
+        frame = video_frame.to_ndarray(format="bgr24")
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = list(detector.detectMultiScale(gray, 1.1, 8, minSize=(80, 80)))
+        for x, y, w, h in faces:
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 180, 70), 2)
+        label = "CAMERA READY" if faces else "CAMERA READY | NO FACE DETECTED"
+        cv2.putText(frame, label, (18, 30), cv2.FONT_HERSHEY_SIMPLEX, .65, (0, 180, 70), 2)
+        return av.VideoFrame.from_ndarray(frame, format="bgr24")
+
+    context = browser_camera_component("smartattend-browser-test", annotate)
+    if context is not None:
+        if context.state.playing:
+            st.success("Browser camera connected successfully.")
+        else:
+            st.info("Click START and choose Allow when the browser requests camera permission.")
+
+
+def browser_face_enrollment(faces_dir, capture_dir, roll, name, dept, section):
+    detector = get_face_detector()
+    state = {"count": 0, "last_face": None, "last_saved": 0.0, "complete": False}
+    lock = threading.Lock()
+    required_samples = 50
+
+    def capture(video_frame):
+        import av
+        frame = video_frame.to_ndarray(format="bgr24")
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = detect_faces(gray, detector)
+        with lock:
+            if len(faces) == 1 and not state["complete"]:
+                x, y, w, h = faces[0]
+                face_img = gray[y:y+h, x:x+w]
+                try:
+                    normalized = prepare_face(cv2.resize(face_img, (200, 200)))
+                    now_saved = time.monotonic()
+                    changed = state["last_face"] is None or float(
+                        np.mean(cv2.absdiff(normalized, state["last_face"]))
+                    ) >= 1.8
+                    if changed and now_saved - state["last_saved"] >= .16:
+                        target = capture_dir / f"face_{state['count']}.jpg"
+                        if cv2.imwrite(str(target), face_img):
+                            state["count"] += 1
+                            state["last_face"] = normalized
+                            state["last_saved"] = now_saved
+                except (ValueError, cv2.error):
+                    pass
+
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 180, 70), 2)
+
+                if state["count"] >= required_samples:
+                    if faces_dir.exists():
+                        backup = (
+                            BASE_DIR.parent / "face_backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
+                            / dept / section / roll
+                        )
+                        backup.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copytree(faces_dir, backup)
+                        shutil.rmtree(faces_dir)
+                    capture_dir.replace(faces_dir)
+                    (faces_dir / ".enrollment_complete").write_text(name, encoding="utf-8")
+                    record_system(
+                        "FACE ENROLLED", f"{dept}:{section}:{roll}",
+                        {"department": dept, "section": section, "roll": roll, "sample_count": state["count"]},
+                    )
+                    state["complete"] = True
+
+            if len(faces) > 1:
+                message, color = "ONE FACE ONLY", (0, 120, 230)
+            elif state["complete"]:
+                message, color = "CAPTURE COMPLETE - CLICK STOP", (0, 180, 70)
+            else:
+                message, color = f"CAPTURED {state['count']} / {required_samples}", (0, 180, 70)
+            cv2.putText(frame, message, (18, 30), cv2.FONT_HERSHEY_SIMPLEX, .65, color, 2)
+        return av.VideoFrame.from_ndarray(frame, format="bgr24")
+
+    context = browser_camera_component(f"smartattend-enroll-{dept}-{section}-{roll}", capture)
+    if context is not None:
+        if context.state.playing:
+            st.info("Capture is running. Slowly vary your angle and keep both eyes visible.")
+        else:
+            st.info("Click START and allow browser camera access. Stop when the video says capture complete.")
+
+
 def get_face_detector():
     detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     if detector.empty():
@@ -205,25 +316,30 @@ def page_training():
     status_text       = st.empty()
 
     if test_btn:
-        cap = open_camera()
-        if cap is not None:
-            try:
-                ok, frame = cap.read()
-                if not ok or frame is None:
-                    st.error("The camera opened but did not return a frame. Try another camera number.")
-                else:
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = detect_faces(gray, get_face_detector())
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    video_placeholder.image(frame_rgb, channels="RGB")
-                    if len(faces) == 1:
-                        st.success("Camera is ready. One enrollment-quality face was detected.")
-                    elif len(faces) > 1:
-                        st.warning("Camera is working, but multiple faces are visible. Keep only one student in frame for capture.")
+        st.session_state.browser_camera_test_active = browser_camera_enabled()
+        if not browser_camera_enabled():
+            cap = open_camera()
+            if cap is not None:
+                try:
+                    ok, frame = cap.read()
+                    if not ok or frame is None:
+                        st.error("The camera opened but did not return a frame. Try another camera number.")
                     else:
-                        st.info("Camera is working. No enrollment-quality face is currently centered with both eyes visible.")
-            finally:
-                cap.release()
+                        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                        faces = detect_faces(gray, get_face_detector())
+                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        video_placeholder.image(frame_rgb, channels="RGB")
+                        if len(faces) == 1:
+                            st.success("Camera is ready. One enrollment-quality face was detected.")
+                        elif len(faces) > 1:
+                            st.warning("Camera is working, but multiple faces are visible. Keep only one student in frame for capture.")
+                        else:
+                            st.info("Camera is working. No enrollment-quality face is currently centered with both eyes visible.")
+                finally:
+                    cap.release()
+
+    if st.session_state.get("browser_camera_test_active") and not st.session_state.training_active:
+        browser_camera_test()
 
     if st.session_state.training_active:
         roll    = st.session_state.training_roll
@@ -236,6 +352,12 @@ def page_training():
         faces_dir = faces_root / roll
         capture_dir = faces_root / f".capture_{roll}"
         faces_root.mkdir(parents=True, exist_ok=True)
+        completion_marker = faces_dir / ".enrollment_complete"
+        if browser_camera_enabled() and completion_marker.exists():
+            completion_marker.unlink()
+            st.session_state.training_active = False
+            st.success(f"Capture completed for {name} ({roll}). Now click Train all models.")
+            return
         if capture_dir.exists():
             shutil.rmtree(capture_dir)
         capture_dir.mkdir(parents=True)
@@ -265,6 +387,11 @@ def page_training():
                 "STUDENT REGISTERED", f"{dept}:{section}:{roll}",
                 {"department": dept, "section": section, "semester": semester, "roll": roll},
             )
+
+        if browser_camera_enabled():
+            st.session_state.browser_camera_test_active = False
+            browser_face_enrollment(faces_dir, capture_dir, roll, name, dept, section)
+            return
 
         cap          = open_camera()
         if cap is None:
@@ -649,7 +776,110 @@ def load_resources():
     return recognizers, student_lookup, trained_labels
 
 
+def run_browser_attendance(video_placeholder, log_placeholder, class_context=None):
+    """Recognize browser webcam frames without trying to open a server camera."""
+    recognizers, student_lookup, trained_labels = load_resources()
+    if not recognizers:
+        st.error("No trained models found. Enroll students and train their section first.")
+        st.session_state.attendance_active = False
+        return
+
+    scoped_key = f"{class_context.department}_{class_context.section}" if class_context else None
+    if scoped_key and scoped_key not in recognizers:
+        st.session_state.attendance_active = False
+        st.error(
+            f"No trained face model is available for {class_context.department} - "
+            f"Section {class_context.section}. Train that section before starting recognition."
+        )
+        return
+
+    face_cascade = get_face_detector()
+    liveness = BlinkChallengeProvider()
+    face_tracker = FaceTracker()
+    last_recorded = {}
+    config = attendance_rules()
+    preview_only = bool(st.session_state.get("preview_only", False))
+    processor_lock = threading.Lock()
+
+    def process_browser_frame(video_frame):
+        import av
+
+        frame = video_frame.to_ndarray(format="bgr24")
+        with processor_lock:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = list(face_cascade.detectMultiScale(gray, 1.1, 8, minSize=(80, 80)))
+            track_ids = face_tracker.assign(faces)
+            liveness.expire(set(track_ids))
+
+            for (x, y, w, h), track_id in zip(faces, track_ids):
+                face_roi = gray[y:y+h, x:x+w]
+                try:
+                    live_result = liveness.update(track_id, face_roi)
+                except (ValueError, cv2.error):
+                    continue
+
+                if config["liveness_required"] and live_result.status != LivenessStatus.LIVE:
+                    if live_result.status == LivenessStatus.SPOOF:
+                        color, label_text = (0, 0, 210), "SPOOF DETECTED"
+                    else:
+                        color = (0, 190, 230)
+                        label_text = f"VERIFYING: {live_result.prompt}"
+                    cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
+                    cv2.putText(frame, label_text, (x, max(25, y-10)), cv2.FONT_HERSHEY_SIMPLEX, .56, color, 2)
+                    continue
+
+                try:
+                    normalized_face = prepare_face(face_roi)
+                except (ValueError, cv2.error):
+                    continue
+
+                best_distance, best_match = 1000.0, None
+                candidates = recognizers.items()
+                if scoped_key:
+                    candidates = [(scoped_key, recognizers[scoped_key])]
+                for key, recognizer in candidates:
+                    try:
+                        label, distance = recognizer.predict(normalized_face)
+                    except cv2.error:
+                        continue
+                    if distance < float(config["lbph_distance"]) and distance < best_distance:
+                        labels = trained_labels.get(key, set())
+                        if label in labels or str(label) in labels:
+                            best_distance, best_match = float(distance), (key, label)
+
+                color, label_text = (0, 0, 210), "UNKNOWN"
+                info = student_lookup.get(best_match) if best_match else None
+                if info:
+                    color = (0, 180, 70)
+                    label_text = f"LIVE | {info['name']} ({info['roll']}) | distance {best_distance:.1f}"
+                    now_monotonic = time.monotonic()
+                    if class_context and not preview_only:
+                        if now_monotonic - last_recorded.get(info["roll"], 0) >= 5:
+                            try:
+                                record_observation(class_context, info["roll"], best_distance, True, base_dir=BASE_DIR)
+                                last_recorded[info["roll"]] = now_monotonic
+                            except (ValueError, OSError):
+                                label_text = f"{info['name']} | ATTENDANCE WRITE FAILED"
+                                color = (0, 120, 230)
+
+                cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
+                cv2.putText(frame, label_text, (x, max(25, y-10)), cv2.FONT_HERSHEY_SIMPLEX, .56, color, 2)
+
+        return av.VideoFrame.from_ndarray(frame, format="bgr24")
+
+    with video_placeholder.container():
+        context = browser_camera_component("smartattend-browser-attendance", process_browser_frame)
+    if context is not None:
+        if context.state.playing:
+            log_placeholder.info("Browser camera connected. Keep this page open during attendance.")
+        else:
+            log_placeholder.info("Click START above and allow camera access in your browser.")
+
+
 def run_attendance_loop(video_placeholder, log_placeholder, class_context=None):
+    if browser_camera_enabled():
+        return run_browser_attendance(video_placeholder, log_placeholder, class_context)
+
     recognizers, student_lookup, trained_labels = load_resources()
 
     if not recognizers:
@@ -1240,8 +1470,19 @@ def main():
     )
     st.sidebar.markdown("---")
     st.sidebar.caption("CAMERA SETTINGS")
-    st.sidebar.number_input("Camera number", min_value=0, max_value=5, value=0, step=1, key="camera_index")
-    st.sidebar.caption("0 is usually the built-in webcam. Stop capture before switching cameras.")
+    default_camera_source = 0 if os.name != "nt" else 1
+    st.sidebar.selectbox(
+        "Camera source",
+        ["Browser camera", "Local OpenCV camera"],
+        index=default_camera_source,
+        key="camera_source",
+        help="Use Browser camera on the deployed website and Local OpenCV camera when running on Windows.",
+    )
+    if not browser_camera_enabled():
+        st.sidebar.number_input("Camera number", min_value=0, max_value=5, value=0, step=1, key="camera_index")
+        st.sidebar.caption("0 is usually the built-in webcam. Stop capture before switching cameras.")
+    else:
+        st.sidebar.caption("Camera permission is requested by your browser when you start a video stream.")
 
     if page != "🎓 Training":
         st.session_state.training_active = False
