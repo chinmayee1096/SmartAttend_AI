@@ -44,6 +44,14 @@ class TimetableTests(unittest.TestCase):
         self.assertIn("sa-current", rendered)
         self.assertIn("LIVE NOW", rendered)
         from smart_attendance.services.attendance_service import materialize_scheduled
+        # An active timetable with no enrolled roster must not crash startup.
+        self.assertEqual(
+            materialize_scheduled(date(2026, 9, 8), active_after=datetime(2026, 9, 8, 9, 45)),
+            0,
+        )
+        from smart_attendance.services.attendance_service import start_class
+        with self.assertRaisesRegex(ValueError, "No active students"):
+            start_class(current[0])
         self.assertEqual(
             materialize_scheduled(date(2026, 9, 8), active_after=datetime(2026, 9, 8, 10, 31)),
             0,

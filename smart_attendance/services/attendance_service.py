@@ -259,8 +259,12 @@ def materialize_scheduled(day: date, active_after: datetime | None = None) -> in
                f.name faculty FROM timetables t
                JOIN departments d ON d.id=t.department_id JOIN sections c ON c.id=t.section_id
                JOIN subjects s ON s.id=t.subject_id JOIN faculty f ON f.id=t.faculty_id
-               WHERE t.active=1 AND t.weekday=? AND t.valid_from<=? AND t.valid_to>=?"""
-        params: list[object] = [day.weekday(), day_text, day_text]
+               WHERE t.active=1 AND t.weekday=? AND t.valid_from<=? AND t.valid_to>=?
+               AND EXISTS (SELECT 1 FROM students roster
+                   WHERE roster.active=1 AND roster.department_id=t.department_id
+                   AND roster.section_id=t.section_id AND roster.semester=t.semester
+                   AND date(roster.enrolled_at)<=?)"""
+        params: list[object] = [day.weekday(), day_text, day_text, day_text]
         if active_after is not None and active_after.date() == day:
             query += " AND t.start_time<=? AND t.end_time>?"
             current_time = active_after.time().strftime("%H:%M:%S")
